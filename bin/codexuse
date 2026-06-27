@@ -1,0 +1,382 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+CONFIG_FILE="${CONFIG_FILE:-$CODEX_HOME/config.toml}"
+BACKUP_SUFFIX="${BACKUP_SUFFIX:-.bak}"
+
+CONFIG_KEYS=(
+  model
+  model_provider
+  model_reasoning_effort
+  model_verbosity
+  review_model
+)
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  codexuse set <model> [effort] [verbosity]   Set Codex default model in config.toml
+  codexuse <model> [effort] [verbosity]       Alias for "set"
+  codexuse init <name> <model> [effort]       Create a Codex profile file
+  codexuse init-fast                          Create fast profile template
+  codexuse init-deep                          Create deep profile template
+  codexuse use <name>                         Apply a profile as the default config
+  codexuse <name>                             Apply profile if <name>.config.toml exists
+  codexuse run <name> [args...]               Run: codex --profile <name> [args...]
+  codexuse list                               List profiles and current default model
+  codexuse show                               Show current Codex model config
+  codexuse edit <name|config>                 Edit a profile or config.toml
+  codexuse remove <name>                      Remove a profile
+
+Environment overrides:
+  CODEX_HOME, CONFIG_FILE, BACKUP_SUFFIX
+
+Examples:
+  codexuse set gpt-5.5 high
+  codexuse gpt-5.5 xhigh medium
+  codexuse init fast gpt-5.5 medium
+  codexuse run fast
+  codexuse use deep
+USAGE
+}
+
+ensure_codex_home() {
+  mkdir -p "$CODEX_HOME"
+}
+
+profile_file() {
+  local name="$1"
+  printf '%s/%s.config.toml' "$CODEX_HOME" "$name"
+}
+
+backup_file() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    cp "$file" "${file}${BACKUP_SUFFIX}.$(date +%Y%m%d%H%M%S)"
+  fi
+}
+
+toml_quote() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+assignment_key() {
+  printf '%s' "$1" | sed 's/[[:space:]]*=.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
+upsert_assignments() {
+  local target="$1"
+  shift
+  local assignments=("$@")
+  local tmp
+  tmp="$(mktemp)"
+  ensure_codex_home
+
+  if [[ -f "$target" ]]; then
+    cp "$target" "$tmp"
+  else
+    : > "$tmp"
+  fi
+
+  local key_regex=""
+  local assignment key
+  for assignment in "${assignments[@]}"; do
+    key="$(assignment_key "$assignment")"
+    if [[ -z "$key_regex" ]]; then
+      key_regex="$key"
+    else
+      key_regex="$key_regex|$key"
+    fi
+  done
+  local key_pattern="^($key_regex)$"
+
+  local filtered
+  filtered="$(mktemp)"
+  awk -v keys="$key_pattern" '
+    BEGIN { in_top = 1 }
+    /^[[:space:]]*\[/ { in_top = 0 }
+    {
+      if (in_top && $0 ~ /^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=/) {
+        key = $0
+        sub(/[[:space:]]*=.*$/, "", key)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+        if (key ~ keys) next
+      }
+      print
+    }
+  ' "$tmp" > "$filtered"
+
+  {
+    for assignment in "${assignments[@]}"; do
+      printf '%s\n' "$assignment"
+    done
+    if [[ -s "$filtered" ]]; then
+      printf '\n'
+      cat "$filtered"
+    fi
+  } > "$target"
+
+  rm -f "$tmp" "$filtered"
+}
+
+set_model() {
+  local model="${1:-}"
+  local effort="${2:-}"
+  local verbosity="${3:-}"
+  if [[ -z "$model" ]]; then
+    echo "Usage: codexuse set <model> [effort] [verbosity]" >&2
+    exit 1
+  fi
+
+  local assignments=("model = \"$(toml_quote "$model")\"")
+  if [[ -n "$effort" ]]; then
+    assignments+=("model_reasoning_effort = \"$(toml_quote "$effort")\"")
+  fi
+  if [[ -n "$verbosity" ]]; then
+    assignments+=("model_verbosity = \"$(toml_quote "$verbosity")\"")
+  fi
+
+  backup_file "$CONFIG_FILE"
+  upsert_assignments "$CONFIG_FILE" "${assignments[@]}"
+  echo "Codex default model updated: $CONFIG_FILE"
+  show_model_summary "$CONFIG_FILE"
+}
+
+init_profile() {
+  local name="${1:-}"
+  local model="${2:-}"
+  local effort="${3:-}"
+  local verbosity="${4:-}"
+  if [[ -z "$name" || -z "$model" ]]; then
+    echo "Usage: codexuse init <name> <model> [effort] [verbosity]" >&2
+    exit 1
+  fi
+  ensure_codex_home
+  local file
+  file="$(profile_file "$name")"
+  if [[ -f "$file" ]]; then
+    backup_file "$file"
+  fi
+
+  {
+    printf '# Codex profile: %s\n' "$name"
+    printf '# Use with: codex --profile %s\n\n' "$name"
+    printf 'model = "%s"\n' "$(toml_quote "$model")"
+    if [[ -n "$effort" ]]; then
+      printf 'model_reasoning_effort = "%s"\n' "$(toml_quote "$effort")"
+    fi
+    if [[ -n "$verbosity" ]]; then
+      printf 'model_verbosity = "%s"\n' "$(toml_quote "$verbosity")"
+    fi
+  } > "$file"
+  echo "Codex profile written: $file"
+  echo "Run with: codex --profile $name"
+}
+
+init_fast() {
+  init_profile fast "${CODEX_FAST_MODEL:-gpt-5.5}" "${CODEX_FAST_EFFORT:-medium}" "${CODEX_FAST_VERBOSITY:-low}"
+}
+
+init_deep() {
+  init_profile deep "${CODEX_DEEP_MODEL:-gpt-5.5}" "${CODEX_DEEP_EFFORT:-xhigh}" "${CODEX_DEEP_VERBOSITY:-medium}"
+}
+
+extract_top_level_assignment() {
+  local file="$1"
+  local key="$2"
+  awk -v wanted="$key" '
+    /^[[:space:]]*\[/ { exit }
+    {
+      line = $0
+      sub(/[[:space:]]*=.*$/, "", line)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+      if (line == wanted) {
+        print $0
+        exit
+      }
+    }
+  ' "$file"
+}
+
+apply_profile() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    echo "Usage: codexuse use <profile-name>" >&2
+    exit 1
+  fi
+  local file
+  file="$(profile_file "$name")"
+  if [[ ! -f "$file" ]]; then
+    echo "Profile not found: $file" >&2
+    echo "Create it with: codexuse init $name <model> [effort]" >&2
+    exit 1
+  fi
+
+  local assignments=()
+  local key value
+  for key in "${CONFIG_KEYS[@]}"; do
+    value="$(extract_top_level_assignment "$file" "$key" || true)"
+    if [[ -n "$value" ]]; then
+      assignments+=("$value")
+    fi
+  done
+  if [[ ${#assignments[@]} -eq 0 ]]; then
+    echo "No top-level model settings found in: $file" >&2
+    exit 1
+  fi
+
+  backup_file "$CONFIG_FILE"
+  upsert_assignments "$CONFIG_FILE" "${assignments[@]}"
+  echo "Applied Codex profile '$name' to default config: $CONFIG_FILE"
+  show_model_summary "$CONFIG_FILE"
+}
+
+run_profile() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    echo "Usage: codexuse run <profile-name> [args...]" >&2
+    exit 1
+  fi
+  shift || true
+  exec codex --profile "$name" "$@"
+}
+
+show_model_summary() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    echo "  (missing: $file)"
+    return
+  fi
+  local key value
+  for key in "${CONFIG_KEYS[@]}"; do
+    value="$(extract_top_level_assignment "$file" "$key" || true)"
+    if [[ -n "$value" ]]; then
+      printf '  %s\n' "$value"
+    fi
+  done
+}
+
+list_profiles() {
+  ensure_codex_home
+  echo "Codex config: $CONFIG_FILE"
+  show_model_summary "$CONFIG_FILE"
+  echo ""
+  echo "Profiles in $CODEX_HOME:"
+  local count=0
+  local file name
+  for file in "$CODEX_HOME"/*.config.toml; do
+    if [[ -f "$file" ]]; then
+      count=$((count + 1))
+      name="$(basename "$file" .config.toml)"
+      echo "  $name"
+      show_model_summary "$file" | sed 's/^/    /'
+    fi
+  done
+  if [[ "$count" -eq 0 ]]; then
+    echo "  (no profiles found)"
+  fi
+}
+
+show_config() {
+  echo "Current Codex model settings"
+  echo "============================"
+  echo "Config file: $CONFIG_FILE"
+  show_model_summary "$CONFIG_FILE"
+  echo ""
+  echo "Official temporary switches:"
+  echo "  codex --model <model>"
+  echo "  codex --profile <name>"
+  echo "  /model inside an interactive Codex session"
+}
+
+edit_file() {
+  local target="${1:-}"
+  local file=""
+  case "$target" in
+    ""|config|default) file="$CONFIG_FILE" ;;
+    *) file="$(profile_file "$target")" ;;
+  esac
+  ensure_codex_home
+  if [[ ! -f "$file" ]]; then
+    : > "$file"
+  fi
+  if [[ -n "${EDITOR:-}" ]]; then
+    "$EDITOR" "$file"
+  elif command -v code >/dev/null 2>&1; then
+    code "$file"
+  elif command -v nano >/dev/null 2>&1; then
+    nano "$file"
+  else
+    echo "File location: $file"
+  fi
+}
+
+remove_profile() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    echo "Usage: codexuse remove <profile-name>" >&2
+    exit 1
+  fi
+  local file
+  file="$(profile_file "$name")"
+  if [[ ! -f "$file" ]]; then
+    echo "Profile not found: $file" >&2
+    exit 1
+  fi
+  read -rp "Remove profile '$name'? [y/N] " answer
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    rm "$file"
+    echo "Removed: $file"
+  else
+    echo "Cancelled."
+  fi
+}
+
+command="${1:-}"
+case "$command" in
+  set)
+    shift
+    set_model "$@"
+    ;;
+  init)
+    shift
+    init_profile "$@"
+    ;;
+  init-fast)
+    init_fast
+    ;;
+  init-deep)
+    init_deep
+    ;;
+  use)
+    apply_profile "${2:-}"
+    ;;
+  run)
+    shift
+    run_profile "$@"
+    ;;
+  list|ls)
+    list_profiles
+    ;;
+  show|config|current)
+    show_config
+    ;;
+  edit)
+    edit_file "${2:-config}"
+    ;;
+  remove|rm|delete)
+    remove_profile "${2:-}"
+    ;;
+  -h|--help|help|"")
+    usage
+    ;;
+  *)
+    if [[ -f "$(profile_file "$command")" ]]; then
+      apply_profile "$command"
+    else
+      shift || true
+      set_model "$command" "$@"
+    fi
+    ;;
+esac

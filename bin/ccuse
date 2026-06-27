@@ -1,0 +1,416 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
+PROFILE_DIR="${PROFILE_DIR:-$CLAUDE_DIR/profiles}"
+SETTINGS_FILE="${SETTINGS_FILE:-$CLAUDE_DIR/settings.json}"
+BACKUP_SUFFIX="${BACKUP_SUFFIX:-.bak}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ccuse claude          Switch to native Claude profile
+  ccuse ark             Switch to Volcengine Ark Coding Plan profile
+  ccuse volcengine      Alias for ark
+  ccuse glm             Switch to GLM (Zhipu AI) profile
+  ccuse kimi            Switch to Kimi (Moonshot AI) profile
+  ccuse init-claude     Save current settings.json as claude profile
+  ccuse init-ark        Create or reconfigure a Volcengine Ark Coding Plan profile
+  ccuse init-volcengine Alias for init-ark
+  ccuse init-glm        Create or reconfigure a GLM profile
+  ccuse init-kimi       Create or reconfigure a Kimi profile
+  ccuse list            List all available profiles
+  ccuse show            Show current Claude Code configuration
+  ccuse edit <name>     Edit a profile file
+  ccuse remove <name>   Remove a profile
+
+Environment overrides:
+  CLAUDE_DIR, PROFILE_DIR, SETTINGS_FILE, BACKUP_SUFFIX
+
+Examples:
+  ccuse init-ark        # Create or reconfigure Ark Coding Plan profile
+  ccuse ark             # Switch to Ark Coding Plan profile
+  ccuse show            # View current configuration
+  ccuse list            # See all available profiles
+  ccuse remove ark      # Remove Ark profile
+USAGE
+}
+
+ensure_profiles_dir() {
+  mkdir -p "$PROFILE_DIR"
+}
+
+backup_settings() {
+  if [[ -f "$SETTINGS_FILE" ]]; then
+    cp "$SETTINGS_FILE" "${SETTINGS_FILE}${BACKUP_SUFFIX}"
+  fi
+}
+
+apply_profile() {
+  local name="$1"
+  local file="$PROFILE_DIR/$name.json"
+  if [[ ! -f "$file" ]]; then
+    echo "Missing profile file: $file" >&2
+    echo "Run: ccuse init-$name" >&2
+    exit 1
+  fi
+  backup_settings
+  cp "$file" "$SETTINGS_FILE"
+  echo "Switched to profile: $name"
+}
+
+init_claude() {
+  ensure_profiles_dir
+  local file="$PROFILE_DIR/claude.json"
+  if [[ -f "$SETTINGS_FILE" ]]; then
+    cp "$SETTINGS_FILE" "$file"
+    echo "Saved current settings to: $file"
+  else
+    printf '{\n}\n' > "$file"
+    echo "Created empty profile: $file"
+  fi
+  echo ""
+  echo "This profile uses your native Claude API key from Anthropic."
+  echo "No additional configuration needed."
+}
+
+init_ark() {
+  ensure_profiles_dir
+  local file="$PROFILE_DIR/ark.json"
+  local backup_file=""
+
+  # If profile exists, ask user what to do
+  if [[ -f "$file" ]]; then
+    echo "Profile already exists: $file"
+    read -rp "Do you want to reconfigure it? [y/N] " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      # Backup existing profile
+      backup_file="${file}.bak.$(date +%Y%m%d%H%M%S)"
+      cp "$file" "$backup_file"
+      echo "Backup created: $backup_file"
+      echo ""
+    else
+      echo "Keeping existing profile. Use 'ccuse edit ark' to modify it."
+      exit 0
+    fi
+  fi
+
+  cat > "$file" <<'JSON'
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "YOUR_ARK_API_KEY",
+    "ANTHROPIC_BASE_URL": "https://ark.cn-beijing.volces.com/api/coding",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "doubao-seed-2-0-code-preview-260215",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "doubao-seed-2-0-code-preview-260215",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "doubao-seed-2-0-code-preview-260215"
+  }
+}
+JSON
+  chmod 600 "$file"
+  if [[ -n "$backup_file" ]]; then
+    echo "Reconfigured profile: $file"
+  else
+    echo "Created template: $file"
+  fi
+  echo ""
+  echo "=========================================="
+  echo "  Next Step: Set your Volcengine Ark API Key"
+  echo "=========================================="
+  echo ""
+  echo "1. Get your API key from Volcengine Ark Coding Plan."
+  echo "2. Replace YOUR_ARK_API_KEY in the profile file."
+  echo ""
+  echo "Default Coding Plan model:"
+  echo "  - doubao-seed-2-0-code-preview-260215"
+  echo ""
+  echo "3. Then run: ccuse ark"
+  echo ""
+  edit_file "$file"
+}
+
+init_glm() {
+  ensure_profiles_dir
+  local file="$PROFILE_DIR/glm.json"
+  local backup_file=""
+
+  # If profile exists, ask user what to do
+  if [[ -f "$file" ]]; then
+    echo "Profile already exists: $file"
+    read -rp "Do you want to reconfigure it? [y/N] " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      # Backup existing profile
+      backup_file="${file}.bak.$(date +%Y%m%d%H%M%S)"
+      cp "$file" "$backup_file"
+      echo "Backup created: $backup_file"
+      echo ""
+    else
+      echo "Keeping existing profile. Use 'ccuse edit glm' to modify it."
+      exit 0
+    fi
+  fi
+
+  cat > "$file" <<'JSON'
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "YOUR_ZHIPU_API_KEY",
+    "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7-FlashX"
+  }
+}
+JSON
+  if [[ -n "$backup_file" ]]; then
+    echo "Reconfigured profile: $file"
+  else
+    echo "Created template: $file"
+  fi
+  echo ""
+  echo "=========================================="
+  echo "  Next Step: Set your Zhipu API Key"
+  echo "=========================================="
+  echo ""
+  echo "1. Get your API key from: https://open.bigmodel.cn/iframe/login"
+  echo "2. Replace YOUR_ZHIPU_API_KEY in the profile file"
+  echo ""
+  echo "Available models:"
+  echo "  - GLM-5            (Latest flagship, coding aligned with Claude Opus 4.5)"
+  echo "  - GLM-4.7          (High intelligence, better coding & aesthetics)"
+  echo "  - GLM-4.7-FlashX   (Lightweight, fast, cost-effective)"
+  echo ""
+  echo "3. Then run: ccuse glm"
+  echo ""
+  edit_file "$file"
+}
+
+init_kimi() {
+  ensure_profiles_dir
+  local file="$PROFILE_DIR/kimi.json"
+  local backup_file=""
+
+  # If profile exists, ask user what to do
+  if [[ -f "$file" ]]; then
+    echo "Profile already exists: $file"
+    read -rp "Do you want to reconfigure it? [y/N] " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      # Backup existing profile
+      backup_file="${file}.bak.$(date +%Y%m%d%H%M%S)"
+      cp "$file" "$backup_file"
+      echo "Backup created: $backup_file"
+      echo ""
+    else
+      echo "Keeping existing profile. Use 'ccuse edit kimi' to modify it."
+      exit 0
+    fi
+  fi
+
+  cat > "$file" <<'JSON'
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "YOUR_KIMI_API_KEY",
+    "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding/",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "kimi-k2.5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2.5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "kimi-k2.5"
+  }
+}
+JSON
+  if [[ -n "$backup_file" ]]; then
+    echo "Reconfigured profile: $file"
+  else
+    echo "Created template: $file"
+  fi
+  echo ""
+  echo "=========================================="
+  echo "  Next Step: Set your Kimi API Key"
+  echo "=========================================="
+  echo ""
+  echo "1. Get your API key from: https://platform.moonshot.cn/console/api-keys"
+  echo "2. Replace YOUR_KIMI_API_KEY in the profile file"
+  echo ""
+  echo "Default model: kimi-k2.5 (Latest, most intelligent, 256k context)"
+  echo ""
+  echo "3. Then run: ccuse kimi"
+  echo ""
+  edit_file "$file"
+}
+
+edit_file() {
+  local file="$1"
+  if [[ -n "${EDITOR:-}" ]]; then
+    echo "Opening $file with $EDITOR..."
+    $EDITOR "$file"
+  elif command -v code &>/dev/null; then
+    echo "Opening $file with VS Code..."
+    code "$file"
+  elif command -v nano &>/dev/null; then
+    echo "Opening $file with nano..."
+    nano "$file"
+  else
+    echo "File location: $file"
+    echo "Please edit it manually."
+  fi
+}
+
+list_profiles() {
+  ensure_profiles_dir
+  echo "Available profiles in $PROFILE_DIR:"
+  echo ""
+  local current=""
+  local active_profile=""
+  if [[ -f "$SETTINGS_FILE" ]]; then
+    current=$(basename "$(readlink -f "$SETTINGS_FILE" 2>/dev/null || echo "$SETTINGS_FILE")" .json 2>/dev/null || echo "")
+    # Try to detect active profile by comparing content
+    for f in "$PROFILE_DIR"/*.json; do
+      if [[ -f "$f" ]]; then
+        if diff -q "$SETTINGS_FILE" "$f" >/dev/null 2>&1; then
+          active_profile=$(basename "$f" .json)
+          break
+        fi
+      fi
+    done
+  fi
+
+  local count=0
+  for f in "$PROFILE_DIR"/*.json; do
+    if [[ -f "$f" ]]; then
+      ((count++)) || true
+      local name=$(basename "$f" .json)
+      if [[ "$name" == "$active_profile" ]]; then
+        echo "  * $name (active)"
+      else
+        echo "    $name"
+      fi
+    fi
+  done
+
+  if [[ $count -eq 0 ]]; then
+    echo "  (no profiles found)"
+    echo ""
+    echo "Run 'ccuse init-<provider>' to create a profile."
+  else
+    echo ""
+    echo "Run 'ccuse <name>' to switch to a profile."
+  fi
+}
+
+remove_profile() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    echo "Usage: ccuse remove <profile-name>" >&2
+    exit 1
+  fi
+
+  local file="$PROFILE_DIR/$name.json"
+  if [[ ! -f "$file" ]]; then
+    echo "Profile not found: $file" >&2
+    exit 1
+  fi
+
+  # Check if this is the currently active profile
+  local is_active=false
+  if [[ -f "$SETTINGS_FILE" ]] && diff -q "$SETTINGS_FILE" "$file" >/dev/null 2>&1; then
+    is_active=true
+  fi
+
+  echo "Removing profile: $name"
+  if [[ "$is_active" == "true" ]]; then
+    echo "Warning: This is your currently active profile!"
+  fi
+  read -rp "Are you sure? [y/N] " answer
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    rm "$file"
+    echo "Profile removed: $name"
+    if [[ "$is_active" == "true" ]]; then
+      echo ""
+      echo "Note: Your current settings.json still uses this configuration."
+      echo "Switch to another profile with 'ccuse <name>' to change."
+    fi
+  else
+    echo "Cancelled."
+    exit 0
+  fi
+}
+
+show_config() {
+  echo "Current Claude Code Configuration"
+  echo "=================================="
+  echo ""
+  echo "Settings file: $SETTINGS_FILE"
+  echo ""
+  if [[ ! -f "$SETTINGS_FILE" ]]; then
+    echo "No settings file found."
+    return
+  fi
+  echo "Configuration:"
+  echo ""
+  # Parse and display key environment variables
+  if command -v python3 &>/dev/null; then
+    python3 -c "
+import json
+import sys
+try:
+    with open('$SETTINGS_FILE', 'r') as f:
+        data = json.load(f)
+    env = data.get('env', {})
+    if not env:
+        print('  (empty configuration)')
+    else:
+        # Show key configurations, mask API keys
+        for key, value in sorted(env.items()):
+            if 'KEY' in key.upper() or 'TOKEN' in key.upper():
+                # Mask API key
+                if len(str(value)) > 8:
+                    masked = str(value)[:4] + '****' + str(value)[-4:]
+                else:
+                    masked = '****'
+                print(f'  {key}: {masked}')
+            else:
+                print(f'  {key}: {value}')
+except Exception as e:
+    print(f'  Error reading config: {e}')
+    sys.exit(1)
+"
+  else
+    # Fallback: just cat the file
+    cat "$SETTINGS_FILE"
+  fi
+  echo ""
+  echo "=================================="
+  echo "Run 'ccuse edit' to modify, 'ccuse list' to see profiles."
+}
+
+case "${1:-}" in
+  claude) apply_profile "claude" ;;
+  ark|volcengine) apply_profile "ark" ;;
+  glm) apply_profile "glm" ;;
+  kimi) apply_profile "kimi" ;;
+  init-claude) init_claude ;;
+  init-ark|init-volcengine) init_ark ;;
+  init-glm) init_glm ;;
+  init-kimi) init_kimi ;;
+  list|ls) list_profiles ;;
+  remove|rm) remove_profile "${2:-}" ;;
+  delete) remove_profile "${2:-}" ;;
+  show|config|current) show_config ;;
+  edit)
+    if [[ -z "${2:-}" ]]; then
+      echo "Usage: ccuse edit <profile-name>" >&2
+      exit 1
+    fi
+    file="$PROFILE_DIR/${2}.json"
+    if [[ ! -f "$file" ]]; then
+      echo "Profile not found: $file" >&2
+      exit 1
+    fi
+    edit_file "$file"
+    ;;
+  -h|--help|help|"") usage ;;
+  *) echo "Unknown command: $1" >&2; usage; exit 2 ;;
+esac
