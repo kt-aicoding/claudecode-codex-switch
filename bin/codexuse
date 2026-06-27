@@ -4,6 +4,7 @@ set -euo pipefail
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CONFIG_FILE="${CONFIG_FILE:-$CODEX_HOME/config.toml}"
 BACKUP_SUFFIX="${BACKUP_SUFFIX:-.bak}"
+VPN_ENV_FILE="${VPN_ENV_FILE:-$CODEX_HOME/vpn.env}"
 
 CONFIG_KEYS=(
   model
@@ -16,27 +17,42 @@ CONFIG_KEYS=(
 usage() {
   cat <<'USAGE'
 Usage:
-  codexuse set <model> [effort] [verbosity]   Set Codex default model in config.toml
-  codexuse <model> [effort] [verbosity]       Alias for "set"
-  codexuse init <name> <model> [effort]       Create a Codex profile file
-  codexuse init-fast                          Create fast profile template
-  codexuse init-deep                          Create deep profile template
-  codexuse use <name>                         Apply a profile as the default config
-  codexuse <name>                             Apply profile if <name>.config.toml exists
-  codexuse run <name> [args...]               Run: codex --profile <name> [args...]
-  codexuse list                               List profiles and current default model
-  codexuse show                               Show current Codex model config
-  codexuse edit <name|config>                 Edit a profile or config.toml
-  codexuse remove <name>                      Remove a profile
+  codexuse global <model> [effort] [verbosity] Set Codex global default model
+  codexuse set <model> [effort] [verbosity]    Alias for "global"
+  codexuse <model> [effort] [verbosity]        Alias for "global"
+  codexuse session <model|profile> [effort] [verbosity] [-- args...]
+                                                Run one Codex session without changing config
+  codexuse init <name> <model> [effort] [verbosity]
+                                                Create a Codex profile file
+  codexuse init-fast                            Create fast profile template
+  codexuse init-deep                            Create deep profile template
+  codexuse use <name>                           Apply a profile as the global default config
+  codexuse <name>                               Apply profile if <name>.config.toml exists
+  codexuse run <name> [args...]                 Run: codex --profile <name> [args...]
+  codexuse vpn on <proxy-url> [no_proxy]        Persist proxy env for codexuse run/session
+  codexuse vpn off                              Disable persisted proxy env
+  codexuse vpn show                             Show persisted proxy env
+  codexuse models                               List common model ids and examples
+  codexuse list                                 List profiles and current default model
+  codexuse show                                 Show current Codex model config
+  codexuse edit <name|config>                   Edit a profile or config.toml
+  codexuse remove <name>                        Remove a profile
+
+Session/VPN options:
+  --proxy <url>                                 Use proxy only for this run/session
+  --vpn <url>                                   Alias for --proxy
+  --no-proxy <hosts>                            NO_PROXY/no_proxy value for this run/session
+  --no-vpn                                      Ignore saved vpn.env for this run/session
 
 Environment overrides:
-  CODEX_HOME, CONFIG_FILE, BACKUP_SUFFIX
+  CODEX_HOME, CONFIG_FILE, BACKUP_SUFFIX, VPN_ENV_FILE
 
 Examples:
-  codexuse set gpt-5.5 high
-  codexuse gpt-5.5 xhigh medium
-  codexuse init fast gpt-5.5 medium
-  codexuse run fast
+  codexuse global gpt-5.5 high
+  codexuse session gpt-5.5 xhigh medium -- --search
+  codexuse init fast gpt-5.5 medium low
+  codexuse vpn on http://127.0.0.1:7890 "localhost,127.0.0.1"
+  codexuse run fast -- --search
   codexuse use deep
 USAGE
 }
@@ -120,12 +136,99 @@ upsert_assignments() {
   rm -f "$tmp" "$filtered"
 }
 
+build_proxy_env() {
+  local proxy_url="$1"
+  local no_proxy="${2:-localhost,127.0.0.1,::1}"
+  printf 'HTTP_PROXY=%s\n' "$proxy_url"
+  printf 'HTTPS_PROXY=%s\n' "$proxy_url"
+  printf 'ALL_PROXY=%s\n' "$proxy_url"
+  printf 'http_proxy=%s\n' "$proxy_url"
+  printf 'https_proxy=%s\n' "$proxy_url"
+  printf 'all_proxy=%s\n' "$proxy_url"
+  printf 'NO_PROXY=%s\n' "$no_proxy"
+  printf 'no_proxy=%s\n' "$no_proxy"
+}
+
+load_vpn_env_args() {
+  if [[ ! -f "$VPN_ENV_FILE" ]]; then
+    return
+  fi
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      ""|\#*) continue ;;
+      *=*) printf '%s\0' "$line" ;;
+    esac
+  done < "$VPN_ENV_FILE"
+}
+
+vpn_env_args() {
+  local proxy_url=""
+  local no_proxy=""
+  local use_saved=true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --proxy|--vpn)
+        proxy_url="${2:-}"
+        if [[ -z "$proxy_url" ]]; then
+          echo "Missing value for $1" >&2
+          exit 1
+        fi
+        shift 2
+        ;;
+      --no-proxy)
+        no_proxy="${2:-}"
+        if [[ -z "$no_proxy" ]]; then
+          echo "Missing value for --no-proxy" >&2
+          exit 1
+        fi
+        shift 2
+        ;;
+      --no-vpn)
+        use_saved=false
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  if [[ -n "$proxy_url" ]]; then
+    build_proxy_env "$proxy_url" "${no_proxy:-localhost,127.0.0.1,::1}" | while IFS= read -r line; do
+      printf '%s\0' "$line"
+    done
+  elif [[ "$use_saved" == "true" ]]; then
+    load_vpn_env_args
+  fi
+}
+
+strip_vpn_options() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --proxy|--vpn|--no-proxy)
+        if [[ $# -lt 2 ]]; then
+          echo "Missing value for $1" >&2
+          exit 1
+        fi
+        shift 2
+        ;;
+      --no-vpn)
+        shift
+        ;;
+      *)
+        printf '%s\0' "$1"
+        shift
+        ;;
+    esac
+  done
+}
+
 set_model() {
   local model="${1:-}"
   local effort="${2:-}"
   local verbosity="${3:-}"
   if [[ -z "$model" ]]; then
-    echo "Usage: codexuse set <model> [effort] [verbosity]" >&2
+    echo "Usage: codexuse global <model> [effort] [verbosity]" >&2
     exit 1
   fi
 
@@ -139,7 +242,7 @@ set_model() {
 
   backup_file "$CONFIG_FILE"
   upsert_assignments "$CONFIG_FILE" "${assignments[@]}"
-  echo "Codex default model updated: $CONFIG_FILE"
+  echo "Codex global model updated: $CONFIG_FILE"
   show_model_summary "$CONFIG_FILE"
 }
 
@@ -228,7 +331,7 @@ apply_profile() {
 
   backup_file "$CONFIG_FILE"
   upsert_assignments "$CONFIG_FILE" "${assignments[@]}"
-  echo "Applied Codex profile '$name' to default config: $CONFIG_FILE"
+  echo "Applied Codex profile '$name' to global config: $CONFIG_FILE"
   show_model_summary "$CONFIG_FILE"
 }
 
@@ -239,7 +342,79 @@ run_profile() {
     exit 1
   fi
   shift || true
-  exec codex --profile "$name" "$@"
+
+  local env_args=()
+  local item
+  while IFS= read -r -d '' item; do
+    env_args+=("$item")
+  done < <(vpn_env_args "$@")
+
+  local codex_args=()
+  while IFS= read -r -d '' item; do
+    codex_args+=("$item")
+  done < <(strip_vpn_options "$@")
+
+  local final_args=()
+  local seen_dash=false
+  for item in "${codex_args[@]}"; do
+    if [[ "$item" == "--" && "$seen_dash" == "false" ]]; then
+      seen_dash=true
+      continue
+    fi
+    final_args+=("$item")
+  done
+
+  exec env "${env_args[@]}" codex --profile "$name" "${final_args[@]}"
+}
+
+run_session() {
+  local target="${1:-}"
+  if [[ -z "$target" ]]; then
+    echo "Usage: codexuse session <model|profile> [effort] [verbosity] [-- args...]" >&2
+    exit 1
+  fi
+  shift || true
+
+  local env_args=()
+  local item
+  while IFS= read -r -d '' item; do
+    env_args+=("$item")
+  done < <(vpn_env_args "$@")
+
+  local clean_args=()
+  while IFS= read -r -d '' item; do
+    clean_args+=("$item")
+  done < <(strip_vpn_options "$@")
+
+  local before_dash=()
+  local codex_args=()
+  local seen_dash=false
+  for item in "${clean_args[@]}"; do
+    if [[ "$item" == "--" && "$seen_dash" == "false" ]]; then
+      seen_dash=true
+      continue
+    fi
+    if [[ "$seen_dash" == "true" ]]; then
+      codex_args+=("$item")
+    else
+      before_dash+=("$item")
+    fi
+  done
+
+  if [[ -f "$(profile_file "$target")" ]]; then
+    exec env "${env_args[@]}" codex --profile "$target" "${codex_args[@]}"
+  fi
+
+  local effort="${before_dash[0]:-}"
+  local verbosity="${before_dash[1]:-}"
+  local options=(--model "$target")
+  if [[ -n "$effort" ]]; then
+    options+=(-c "model_reasoning_effort=\"$(toml_quote "$effort")\"")
+  fi
+  if [[ -n "$verbosity" ]]; then
+    options+=(-c "model_verbosity=\"$(toml_quote "$verbosity")\"")
+  fi
+  exec env "${env_args[@]}" codex "${options[@]}" "${codex_args[@]}"
 }
 
 show_model_summary() {
@@ -288,6 +463,66 @@ show_config() {
   echo "  codex --model <model>"
   echo "  codex --profile <name>"
   echo "  /model inside an interactive Codex session"
+  echo ""
+  echo "codexuse levels:"
+  echo "  global:  codexuse global gpt-5.5 high"
+  echo "  session: codexuse session gpt-5.5 high -- --search"
+  echo ""
+  echo "VPN env file: $VPN_ENV_FILE"
+}
+
+vpn_command() {
+  local action="${1:-show}"
+  case "$action" in
+    on)
+      local proxy_url="${2:-}"
+      local no_proxy="${3:-localhost,127.0.0.1,::1}"
+      if [[ -z "$proxy_url" ]]; then
+        echo "Usage: codexuse vpn on <proxy-url> [no_proxy]" >&2
+        exit 1
+      fi
+      ensure_codex_home
+      build_proxy_env "$proxy_url" "$no_proxy" > "$VPN_ENV_FILE"
+      chmod 600 "$VPN_ENV_FILE"
+      echo "Codex VPN/proxy env saved: $VPN_ENV_FILE"
+      ;;
+    off)
+      rm -f "$VPN_ENV_FILE"
+      echo "Codex VPN/proxy env disabled: $VPN_ENV_FILE"
+      ;;
+    show)
+      if [[ -f "$VPN_ENV_FILE" ]]; then
+        sed 's/=.*/=****/' "$VPN_ENV_FILE"
+      else
+        echo "No Codex VPN/proxy env configured."
+      fi
+      ;;
+    *)
+      echo "Usage: codexuse vpn on|off|show" >&2
+      exit 1
+      ;;
+  esac
+}
+
+list_models() {
+  cat <<'MODELS'
+Common Codex/OpenAI model examples:
+  gpt-5.5                 Recommended current Codex default in OpenAI docs
+  gpt-5.4                 Older/default-compatible GPT-5 family model
+  o3                      Example model id accepted by Codex config examples
+
+Common profile presets:
+  fast: gpt-5.5 medium low
+  deep: gpt-5.5 xhigh medium
+
+Local / OSS:
+  codex --oss --local-provider ollama
+  codex --oss --local-provider lmstudio
+
+Notes:
+  Codex accepts model ids available to your account/provider.
+  Check the OpenAI dashboard and Codex docs before relying on a model id in automation.
+MODELS
 }
 
 edit_file() {
@@ -335,9 +570,13 @@ remove_profile() {
 
 command="${1:-}"
 case "$command" in
-  set)
+  global|set)
     shift
     set_model "$@"
+    ;;
+  session)
+    shift
+    run_session "$@"
     ;;
   init)
     shift
@@ -355,6 +594,13 @@ case "$command" in
   run)
     shift
     run_profile "$@"
+    ;;
+  vpn)
+    shift
+    vpn_command "$@"
+    ;;
+  models)
+    list_models
     ;;
   list|ls)
     list_profiles

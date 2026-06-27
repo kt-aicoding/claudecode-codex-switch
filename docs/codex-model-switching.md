@@ -13,7 +13,8 @@ Codex CLI 当前有四种常用模型切换方式：
 
 本仓库的 `codexuse` 同时支持两类工作流：
 
-- `codexuse set gpt-5.5 high`：修改 `~/.codex/config.toml`，适合持久切换默认模型。
+- `codexuse global gpt-5.5 high`：修改 `~/.codex/config.toml`，适合持久切换默认模型。
+- `codexuse session gpt-5.5 high`：运行单次会话，不改 `config.toml`。
 - `codexuse run fast`：运行 `codex --profile fast`，适合每次启动选择一套 profile。
 
 ## 配置文件位置
@@ -57,6 +58,35 @@ model_verbosity = "medium"
 
 `codexuse set` 只更新这些模型相关顶层字段，不覆盖用户已有的 MCP、sandbox、history、project trust list 等配置。
 
+等价命令：
+
+```bash
+codexuse global gpt-5.5 xhigh medium
+codexuse set gpt-5.5 xhigh medium
+codexuse gpt-5.5 xhigh medium
+```
+
+## 会话级切换
+
+会话级切换不会修改 `~/.codex/config.toml`：
+
+```bash
+codexuse session gpt-5.5 high
+codexuse session gpt-5.5 xhigh medium -- --search
+```
+
+如果目标是一个存在的 profile：
+
+```bash
+codexuse session fast -- --search
+```
+
+等价于：
+
+```bash
+codex --profile fast --search
+```
+
 ## Profile
 
 Codex profile 文件位于：
@@ -88,6 +118,46 @@ codex --profile fast
 
 `codexuse run fast` 只是这个官方启动方式的短命令封装。
 
+## VPN / proxy
+
+Codex CLI 进程会读取常见 proxy 环境变量。`codexuse` 支持两种方式：
+
+只给当前会话使用：
+
+```bash
+codexuse session gpt-5.5 high --proxy http://127.0.0.1:7890
+codexuse run fast --proxy http://127.0.0.1:7890 -- --search
+```
+
+持久保存给 `codexuse run/session` 自动使用：
+
+```bash
+codexuse vpn on http://127.0.0.1:7890 "localhost,127.0.0.1"
+codexuse vpn show
+codexuse vpn off
+```
+
+保存位置：
+
+```text
+~/.codex/vpn.env
+```
+
+写入的环境变量：
+
+```text
+HTTP_PROXY
+HTTPS_PROXY
+ALL_PROXY
+http_proxy
+https_proxy
+all_proxy
+NO_PROXY
+no_proxy
+```
+
+注意：`codexuse vpn on` 只影响通过 `codexuse run/session` 启动的进程。如果你直接运行 `codex`，仍需要在 shell 里手动 `export HTTP_PROXY=...`。
+
 ## 为什么不直接复制整份 config.toml
 
 `ccuse` 切换 Claude Code 时复制整份 `settings.json`，因为 Claude Code provider 切换通常需要整套环境变量：
@@ -114,4 +184,3 @@ Codex 的模型切换不需要替换整份配置。`~/.codex/config.toml` 往往
 - OpenAI Developers Codex basic config: https://developers.openai.com/codex/config-basic
 - OpenAI Developers Codex config reference: https://developers.openai.com/codex/config-reference
 - OpenAI Codex repository config docs entry: https://github.com/openai/codex/blob/main/docs/config.md
-

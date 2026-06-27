@@ -9,6 +9,9 @@ BACKUP_SUFFIX="${BACKUP_SUFFIX:-.bak}"
 usage() {
   cat <<'USAGE'
 Usage:
+  ccuse global <name>    Switch global Claude Code settings to a profile
+  ccuse session <name>   Run one Claude Code session with a profile, without changing settings
+  ccuse run <name>       Alias for session
   ccuse claude          Switch to native Claude profile
   ccuse ark             Switch to Volcengine Ark Coding Plan profile
   ccuse volcengine      Alias for ark
@@ -21,6 +24,11 @@ Usage:
   ccuse init-kimi       Create or reconfigure a Kimi profile
   ccuse list            List all available profiles
   ccuse show            Show current Claude Code configuration
+  ccuse vpn <name> on <proxy-url> [no_proxy]
+                         Persist proxy env in a profile for VPN/proxy usage
+  ccuse vpn <name> off   Remove proxy env from a profile
+  ccuse vpn <name> show  Show proxy env configured in a profile
+  ccuse models          List common provider model ids and examples
   ccuse edit <name>     Edit a profile file
   ccuse remove <name>   Remove a profile
 
@@ -28,6 +36,12 @@ Environment overrides:
   CLAUDE_DIR, PROFILE_DIR, SETTINGS_FILE, BACKUP_SUFFIX
 
 Examples:
+  ccuse global glm       # Persistently switch Claude Code settings
+  ccuse session glm -- --model glm-5
+                         # Run one Claude session with GLM env, no settings write
+  ccuse session kimi --proxy http://127.0.0.1:7890
+                         # Run one session through a VPN/proxy
+  ccuse vpn ark on http://127.0.0.1:7890 "localhost,127.0.0.1"
   ccuse init-ark        # Create or reconfigure Ark Coding Plan profile
   ccuse ark             # Switch to Ark Coding Plan profile
   ccuse show            # View current configuration
@@ -57,6 +71,216 @@ apply_profile() {
   backup_settings
   cp "$file" "$SETTINGS_FILE"
   echo "Switched to profile: $name"
+}
+
+profile_env_args() {
+  local file="$1"
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required for session-level profile env loading." >&2
+    exit 1
+  fi
+  python3 - "$file" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+env = data.get("env", {})
+if not isinstance(env, dict):
+    raise SystemExit(f"Expected object at env in {path}")
+for key, value in env.items():
+    print(f"{key}={value}", end="\0")
+PY
+}
+
+build_proxy_env() {
+  local proxy_url="$1"
+  local no_proxy="${2:-localhost,127.0.0.1,::1}"
+  printf 'HTTP_PROXY=%s\n' "$proxy_url"
+  printf 'HTTPS_PROXY=%s\n' "$proxy_url"
+  printf 'ALL_PROXY=%s\n' "$proxy_url"
+  printf 'http_proxy=%s\n' "$proxy_url"
+  printf 'https_proxy=%s\n' "$proxy_url"
+  printf 'all_proxy=%s\n' "$proxy_url"
+  printf 'NO_PROXY=%s\n' "$no_proxy"
+  printf 'no_proxy=%s\n' "$no_proxy"
+}
+
+vpn_env_args() {
+  local proxy_url=""
+  local no_proxy=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --proxy|--vpn)
+        proxy_url="${2:-}"
+        if [[ -z "$proxy_url" ]]; then
+          echo "Missing value for $1" >&2
+          exit 1
+        fi
+        shift 2
+        ;;
+      --no-proxy)
+        no_proxy="${2:-}"
+        if [[ -z "$no_proxy" ]]; then
+          echo "Missing value for --no-proxy" >&2
+          exit 1
+        fi
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  if [[ -n "$proxy_url" ]]; then
+    build_proxy_env "$proxy_url" "${no_proxy:-localhost,127.0.0.1,::1}" | while IFS= read -r line; do
+      printf '%s\0' "$line"
+    done
+  fi
+}
+
+strip_vpn_options() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --proxy|--vpn|--no-proxy)
+        if [[ $# -lt 2 ]]; then
+          echo "Missing value for $1" >&2
+          exit 1
+        fi
+        shift 2
+        ;;
+      *)
+        printf '%s\0' "$1"
+        shift
+        ;;
+    esac
+  done
+}
+
+run_profile_session() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    echo "Usage: ccuse session <profile-name> [--proxy URL] [-- claude args...]" >&2
+    exit 1
+  fi
+  shift || true
+  local file="$PROFILE_DIR/$name.json"
+  if [[ ! -f "$file" ]]; then
+    echo "Missing profile file: $file" >&2
+    echo "Run: ccuse init-$name" >&2
+    exit 1
+  fi
+
+  local env_args=()
+  local item
+  while IFS= read -r -d '' item; do
+    env_args+=("$item")
+  done < <(profile_env_args "$file")
+  while IFS= read -r -d '' item; do
+    env_args+=("$item")
+  done < <(vpn_env_args "$@")
+
+  local clean_args=()
+  while IFS= read -r -d '' item; do
+    clean_args+=("$item")
+  done < <(strip_vpn_options "$@")
+
+  local claude_args=()
+  local seen_dash=false
+  for item in "${clean_args[@]}"; do
+    if [[ "$item" == "--" && "$seen_dash" == "false" ]]; then
+      seen_dash=true
+      continue
+    fi
+    claude_args+=("$item")
+  done
+
+  exec env "${env_args[@]}" claude "${claude_args[@]}"
+}
+
+profile_proxy() {
+  local name="${1:-}"
+  local action="${2:-show}"
+  local proxy_url="${3:-}"
+  local no_proxy="${4:-localhost,127.0.0.1,::1}"
+  if [[ -z "$name" ]]; then
+    echo "Usage: ccuse vpn <profile-name> on|off|show [proxy-url] [no_proxy]" >&2
+    exit 1
+  fi
+  local file="$PROFILE_DIR/$name.json"
+  if [[ ! -f "$file" ]]; then
+    echo "Profile not found: $file" >&2
+    exit 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required for ccuse vpn." >&2
+    exit 1
+  fi
+  case "$action" in
+    on)
+      if [[ -z "$proxy_url" ]]; then
+        echo "Usage: ccuse vpn <profile-name> on <proxy-url> [no_proxy]" >&2
+        exit 1
+      fi
+      python3 - "$file" "$proxy_url" "$no_proxy" <<'PY'
+import json
+import sys
+
+path, proxy_url, no_proxy = sys.argv[1:4]
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+env = data.setdefault("env", {})
+if not isinstance(env, dict):
+    raise SystemExit(f"Expected object at env in {path}")
+for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+    env[key] = proxy_url
+env["NO_PROXY"] = no_proxy
+env["no_proxy"] = no_proxy
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+PY
+      chmod 600 "$file"
+      echo "Proxy env saved in profile: $file"
+      ;;
+    off)
+      python3 - "$file" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+env = data.get("env", {})
+if isinstance(env, dict):
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"):
+        env.pop(key, None)
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+PY
+      echo "Proxy env removed from profile: $file"
+      ;;
+    show)
+      python3 - "$file" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+env = data.get("env", {})
+for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+    if isinstance(env, dict) and key in env:
+        print(f"{key}=****")
+PY
+      ;;
+    *)
+      echo "Usage: ccuse vpn <profile-name> on|off|show" >&2
+      exit 1
+      ;;
+  esac
 }
 
 init_claude() {
@@ -386,7 +610,43 @@ except Exception as e:
   echo "Run 'ccuse edit' to modify, 'ccuse list' to see profiles."
 }
 
+list_models() {
+  cat <<'MODELS'
+Claude Code native aliases/examples:
+  opus                    Claude Code alias for latest Opus-class model
+  sonnet                  Claude Code alias for latest Sonnet-class model
+  fable                   Claude Code alias for latest Fable-class model
+  claude-opus-4-6         Example full model id
+  claude-sonnet-4-6       Example full model id
+  claude-fable-5          Example full model id shown by Claude Code help
+
+Volcengine Ark Coding Plan:
+  doubao-seed-2-0-code-preview-260215
+
+Zhipu GLM Anthropic-compatible examples:
+  glm-5
+  glm-4.7
+  glm-4.7-FlashX
+
+Moonshot Kimi Coding examples:
+  kimi-k2.5
+
+Usage:
+  Global provider/profile: ccuse global glm
+  Session provider/profile: ccuse session glm -- --model glm-5
+  Native Claude session model: claude --model sonnet
+
+Notes:
+  Provider model ids change. Check the provider console/docs before automating.
+MODELS
+}
+
 case "${1:-}" in
+  global) apply_profile "${2:-}" ;;
+  session|run)
+    shift
+    run_profile_session "$@"
+    ;;
   claude) apply_profile "claude" ;;
   ark|volcengine) apply_profile "ark" ;;
   glm) apply_profile "glm" ;;
@@ -396,6 +656,8 @@ case "${1:-}" in
   init-glm) init_glm ;;
   init-kimi) init_kimi ;;
   list|ls) list_profiles ;;
+  vpn|proxy) profile_proxy "${2:-}" "${3:-show}" "${4:-}" "${5:-localhost,127.0.0.1,::1}" ;;
+  models) list_models ;;
   remove|rm) remove_profile "${2:-}" ;;
   delete) remove_profile "${2:-}" ;;
   show|config|current) show_config ;;

@@ -7,6 +7,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 export CODEX_HOME="$TMP/codex"
 export CONFIG_FILE="$CODEX_HOME/config.toml"
+export CAPTURE_FILE="$TMP/capture.out"
 mkdir -p "$CODEX_HOME"
 cat > "$CONFIG_FILE" <<'TOML'
 model = "old-model"
@@ -33,7 +34,60 @@ grep -q '\[mcp_servers.context7\]' "$CONFIG_FILE"
 "$ROOT/bin/codexuse" list >/tmp/codexuse-smoke.out
 grep -q 'fast' /tmp/codexuse-smoke.out
 
+mkdir -p "$TMP/bin"
+cat > "$TMP/bin/codex" <<'SH'
+#!/usr/bin/env bash
+{
+  printf 'codex args:'
+  printf ' [%s]' "$@"
+  printf '\n'
+  printf 'HTTP_PROXY=%s\n' "${HTTP_PROXY:-}"
+} > "$CAPTURE_FILE"
+SH
+chmod +x "$TMP/bin/codex"
+PATH="$TMP/bin:$PATH" "$ROOT/bin/codexuse" vpn on http://127.0.0.1:7890 "localhost,127.0.0.1" >/tmp/codexuse-smoke.out
+PATH="$TMP/bin:$PATH" "$ROOT/bin/codexuse" session gpt-5.5 high medium -- --search >/tmp/codexuse-smoke.out
+grep -Fq 'codex args: [--model] [gpt-5.5]' "$CAPTURE_FILE"
+grep -q 'model_reasoning_effort' "$CAPTURE_FILE"
+grep -q 'HTTP_PROXY=http://127.0.0.1:7890' "$CAPTURE_FILE"
+PATH="$TMP/bin:$PATH" "$ROOT/bin/codexuse" run fast -- --search >/tmp/codexuse-smoke.out
+grep -Fq 'codex args: [--profile] [fast] [--search]' "$CAPTURE_FILE"
+
+cat > "$TMP/bin/claude" <<'SH'
+#!/usr/bin/env bash
+{
+  printf 'claude args:'
+  printf ' [%s]' "$@"
+  printf '\n'
+  printf 'ANTHROPIC_BASE_URL=%s\n' "${ANTHROPIC_BASE_URL:-}"
+  printf 'HTTP_PROXY=%s\n' "${HTTP_PROXY:-}"
+} > "$CAPTURE_FILE"
+SH
+chmod +x "$TMP/bin/claude"
+
+export CLAUDE_DIR="$TMP/claude"
+export PROFILE_DIR="$CLAUDE_DIR/profiles"
+export SETTINGS_FILE="$CLAUDE_DIR/settings.json"
+mkdir -p "$PROFILE_DIR"
+cat > "$PROFILE_DIR/glm.json" <<'JSON'
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "test-token",
+    "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5"
+  }
+}
+JSON
+
+"$ROOT/bin/ccuse" vpn glm on http://127.0.0.1:7890 "localhost,127.0.0.1" >/tmp/ccuse-smoke.out
+grep -q 'HTTP_PROXY' "$PROFILE_DIR/glm.json"
+PATH="$TMP/bin:$PATH" "$ROOT/bin/ccuse" session glm -- --model glm-5 -p hello >/tmp/ccuse-smoke.out
+grep -Fq 'claude args: [--model] [glm-5] [-p] [hello]' "$CAPTURE_FILE"
+grep -q 'ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic' "$CAPTURE_FILE"
+grep -q 'HTTP_PROXY=http://127.0.0.1:7890' "$CAPTURE_FILE"
+test ! -f "$SETTINGS_FILE"
+
 bash -n "$ROOT/bin/ccuse" "$ROOT/bin/codexuse" "$ROOT/scripts/install.sh"
 
-rm -f /tmp/codexuse-smoke.out
+rm -f /tmp/codexuse-smoke.out /tmp/ccuse-smoke.out
 echo "smoke tests passed"

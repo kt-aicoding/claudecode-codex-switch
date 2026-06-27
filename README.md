@@ -25,7 +25,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 - profile 目录：`~/.claude/profiles/`
 - 当前配置：`~/.claude/settings.json`
-- 切换方式：备份当前 settings，再复制目标 profile 到 settings
+- 全局切换：备份当前 settings，再复制目标 profile 到 settings
+- 会话切换：只把目标 profile 的 `env` 注入到本次 `claude` 进程，不改 settings
 
 常用命令：
 
@@ -40,8 +41,14 @@ ccuse glm
 ccuse kimi
 ccuse claude
 
+ccuse global glm
+ccuse session glm -- --model glm-5
+ccuse session kimi --proxy http://127.0.0.1:7890
+ccuse vpn ark on http://127.0.0.1:7890 "localhost,127.0.0.1"
+
 ccuse list
 ccuse show
+ccuse models
 ccuse edit glm
 ```
 
@@ -56,6 +63,30 @@ ccuse edit glm
 
 `ccuse` profile 中可能包含 API key，占位模板会写 `YOUR_*_API_KEY`，真实 key 只保存在用户本机，不提交到仓库。
 
+### ccuse 全局 / 会话级
+
+全局切换会改 `~/.claude/settings.json`，适合你接下来一段时间都用某个 provider：
+
+```bash
+ccuse global glm
+ccuse global claude
+```
+
+会话级切换不会改 `settings.json`，适合临时试模型或临时走 VPN：
+
+```bash
+ccuse session glm -- --model glm-5
+ccuse session ark --proxy http://127.0.0.1:7890
+```
+
+如果想把 VPN/proxy 持久写进某个 Claude Code profile：
+
+```bash
+ccuse vpn glm on http://127.0.0.1:7890 "localhost,127.0.0.1"
+ccuse vpn glm show
+ccuse vpn glm off
+```
+
 ## codexuse：Codex 切换
 
 Codex CLI 有几种模型切换方式：
@@ -65,9 +96,10 @@ Codex CLI 有几种模型切换方式：
 - 持久默认：写入 `~/.codex/config.toml` 的顶层 `model = "..."`
 - Profile 启动：写入 `$CODEX_HOME/<name>.config.toml`，运行 `codex --profile <name>`
 
-`codexuse` 把这些做成两个常用动作：
+`codexuse` 把这些做成两个常用动作：全局默认和单次会话。
 
 ```bash
+codexuse global gpt-5.5 high
 codexuse set gpt-5.5 high
 codexuse gpt-5.5 xhigh medium
 ```
@@ -98,11 +130,35 @@ codexuse use deep              # 把 deep profile 的模型字段写成默认配
 codexuse deep                  # 如果 deep.config.toml 存在，也等价于 use deep
 ```
 
+单次会话不改 `~/.codex/config.toml`：
+
+```bash
+codexuse session gpt-5.5 high
+codexuse session gpt-5.5 xhigh medium -- --search
+codexuse session fast -- --search
+```
+
+VPN/proxy 支持两种方式。只给本次会话使用：
+
+```bash
+codexuse session gpt-5.5 high --proxy http://127.0.0.1:7890
+codexuse run fast --proxy http://127.0.0.1:7890 -- --search
+```
+
+持久保存给 `codexuse run/session` 自动使用：
+
+```bash
+codexuse vpn on http://127.0.0.1:7890 "localhost,127.0.0.1"
+codexuse vpn show
+codexuse vpn off
+```
+
 查看和编辑：
 
 ```bash
 codexuse list
 codexuse show
+codexuse models
 codexuse edit config
 codexuse edit fast
 codexuse remove fast
@@ -135,4 +191,4 @@ bash tests/smoke.sh
 
 - [Codex 模型切换调研](docs/codex-model-switching.md)
 - [ccuse 实现说明](docs/ccuse-notes.md)
-
+- [模型清单与示例](docs/models.md)
