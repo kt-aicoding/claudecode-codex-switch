@@ -21,18 +21,18 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## 复制即用
 
-Claude Code 切到 Z.AI GLM：
+Claude Code 切到 Volcengine Ark Coding Plan：
 
 ```bash
-ccuse init-glm
-ccuse edit glm
-ccuse global glm
+ccuse init-ark
+ccuse edit ark
+ccuse global ark
 ```
 
-Claude Code 单次会话使用 GLM 强模型，不改全局配置：
+Claude Code 单次会话使用 Ark CodingPlan 模型，不改全局配置：
 
 ```bash
-ccuse session glm -- --model glm-5.2
+ccuse session ark -- --model doubao-seed-2-0-code-preview-260215
 ```
 
 Claude Code 单次会话走 VPN/proxy：
@@ -98,7 +98,7 @@ ccuse init-kimi
 `init-*` 会生成带占位 API key 的 profile。首次使用后运行：
 
 ```bash
-ccuse edit glm
+ccuse edit ark
 ```
 
 把 `YOUR_*_API_KEY` 替换为自己的 key。真实 key 只保存在本机，不会提交到仓库。
@@ -108,19 +108,19 @@ ccuse edit glm
 全局切换会把 profile 写入 `~/.claude/settings.json`，适合接下来一段时间都用同一个 provider：
 
 ```bash
-ccuse global glm
-ccuse global kimi
 ccuse global ark
+ccuse global kimi
 ccuse global claude
+ccuse global glm
 ```
 
 这些短命令等价于 `ccuse global <name>`：
 
 ```bash
-ccuse glm
-ccuse kimi
 ccuse ark
+ccuse kimi
 ccuse claude
+ccuse glm
 ```
 
 ### 单次会话
@@ -128,8 +128,8 @@ ccuse claude
 单次会话只把 profile 里的 `env` 注入本次 `claude` 进程，不修改 `settings.json`：
 
 ```bash
-ccuse session glm
-ccuse session glm -- --model glm-5.2
+ccuse session ark
+ccuse session ark -- --model doubao-seed-2-0-code-preview-260215
 ccuse session kimi --proxy http://127.0.0.1:7890
 ```
 
@@ -146,9 +146,9 @@ ccuse session ark --proxy http://127.0.0.1:7890
 把代理持久写进某个 Claude Code profile：
 
 ```bash
-ccuse vpn glm on http://127.0.0.1:7890 "localhost,127.0.0.1"
-ccuse vpn glm show
-ccuse vpn glm off
+ccuse vpn ark on http://127.0.0.1:7890 "localhost,127.0.0.1"
+ccuse vpn ark show
+ccuse vpn ark off
 ```
 
 ### 常用命令
@@ -157,8 +157,8 @@ ccuse vpn glm off
 ccuse list
 ccuse show
 ccuse models
-ccuse edit glm
-ccuse remove glm
+ccuse edit ark
+ccuse remove ark
 ```
 
 内置 provider 模板：
@@ -296,11 +296,11 @@ Warp 不需要额外集成。把安装目录加入启动 shell 的 `PATH` 后，
 
 ```bash
 # 日常默认
-ccuse global glm
+ccuse global ark
 codexuse global gpt-5.5 high
 
 # 本次任务临时更强
-ccuse session glm -- --model glm-5.2
+ccuse session ark -- --model doubao-seed-2-0-code-preview-260215
 codexuse session gpt-5.5 xhigh medium
 
 # 本次任务临时走代理
@@ -343,7 +343,7 @@ codexuse list
 重新编辑 API key：
 
 ```bash
-ccuse edit glm
+ccuse edit ark
 ccuse edit kimi
 ```
 

@@ -26,12 +26,12 @@ profile 是普通 JSON 文件：
 运行：
 
 ```bash
-ccuse glm
+ccuse ark
 ```
 
 执行流程：
 
-1. 查找 `~/.claude/profiles/glm.json`
+1. 查找 `~/.claude/profiles/ark.json`
 2. 如果当前 `~/.claude/settings.json` 存在，先备份成 `settings.json.bak`
 3. 复制 profile 文件覆盖当前 `settings.json`
 4. 输出当前切换结果
@@ -41,7 +41,7 @@ ccuse glm
 显式全局命令：
 
 ```bash
-ccuse global glm
+ccuse global ark
 ```
 
 ## 会话级切换
@@ -49,12 +49,12 @@ ccuse global glm
 运行：
 
 ```bash
-ccuse session glm -- --model glm-5.2
+ccuse session ark -- --model doubao-seed-2-0-code-preview-260215
 ```
 
 执行流程：
 
-1. 读取 `~/.claude/profiles/glm.json`
+1. 读取 `~/.claude/profiles/ark.json`
 2. 提取其中的 `env`
 3. 用这些环境变量启动本次 `claude` 进程
 4. 不修改 `~/.claude/settings.json`
@@ -65,7 +65,7 @@ ccuse session glm -- --model glm-5.2
 
 ```bash
 ccuse session kimi
-ccuse session glm -- --model glm-5.2 -p "hello"
+ccuse session ark -- --model doubao-seed-2-0-code-preview-260215 -p "hello"
 ccuse session ark --proxy http://127.0.0.1:7890
 ```
 
@@ -74,15 +74,15 @@ ccuse session ark --proxy http://127.0.0.1:7890
 只给单次会话使用：
 
 ```bash
-ccuse session glm --proxy http://127.0.0.1:7890
+ccuse session ark --proxy http://127.0.0.1:7890
 ```
 
 持久写进某个 profile：
 
 ```bash
-ccuse vpn glm on http://127.0.0.1:7890 "localhost,127.0.0.1"
-ccuse vpn glm show
-ccuse vpn glm off
+ccuse vpn ark on http://127.0.0.1:7890 "localhost,127.0.0.1"
+ccuse vpn ark show
+ccuse vpn ark off
 ```
 
 写入的环境变量：

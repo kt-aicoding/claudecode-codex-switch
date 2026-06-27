@@ -69,21 +69,21 @@ export CLAUDE_DIR="$TMP/claude"
 export PROFILE_DIR="$CLAUDE_DIR/profiles"
 export SETTINGS_FILE="$CLAUDE_DIR/settings.json"
 mkdir -p "$PROFILE_DIR"
-cat > "$PROFILE_DIR/glm.json" <<'JSON'
+cat > "$PROFILE_DIR/ark.json" <<'JSON'
 {
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "test-token",
-    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.2"
+    "ANTHROPIC_BASE_URL": "https://ark.cn-beijing.volces.com/api/coding",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "doubao-seed-2-0-code-preview-260215"
   }
 }
 JSON
 
-"$ROOT/bin/ccuse" vpn glm on http://127.0.0.1:7890 "localhost,127.0.0.1" >/tmp/ccuse-smoke.out
-grep -q 'HTTP_PROXY' "$PROFILE_DIR/glm.json"
-PATH="$TMP/bin:$PATH" "$ROOT/bin/ccuse" session glm -- --model glm-5.2 -p hello >/tmp/ccuse-smoke.out
-grep -Fq 'claude args: [--model] [glm-5.2] [-p] [hello]' "$CAPTURE_FILE"
-grep -q 'ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic' "$CAPTURE_FILE"
+"$ROOT/bin/ccuse" vpn ark on http://127.0.0.1:7890 "localhost,127.0.0.1" >/tmp/ccuse-smoke.out
+grep -q 'HTTP_PROXY' "$PROFILE_DIR/ark.json"
+PATH="$TMP/bin:$PATH" "$ROOT/bin/ccuse" session ark -- --model doubao-seed-2-0-code-preview-260215 -p hello >/tmp/ccuse-smoke.out
+grep -Fq 'claude args: [--model] [doubao-seed-2-0-code-preview-260215] [-p] [hello]' "$CAPTURE_FILE"
+grep -q 'ANTHROPIC_BASE_URL=https://ark.cn-beijing.volces.com/api/coding' "$CAPTURE_FILE"
 grep -q 'HTTP_PROXY=http://127.0.0.1:7890' "$CAPTURE_FILE"
 test ! -f "$SETTINGS_FILE"
 
