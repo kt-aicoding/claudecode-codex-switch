@@ -70,6 +70,55 @@ codexuse vpn on http://127.0.0.1:7890 "localhost,127.0.0.1"
 | 在 Warp 里偶尔需要代理 | `--proxy http://127.0.0.1:7890` |
 | 长期让某个 profile / Codex 走代理 | `vpn on` |
 
+## 图示
+
+整体使用路径：
+
+```mermaid
+flowchart LR
+  A["安装脚本"] --> B["~/.local/bin/ccuse"]
+  A --> C["~/.local/bin/codexuse"]
+  B --> D["Claude Code provider/profile 切换"]
+  C --> E["Codex 模型/profile 切换"]
+  D --> F["全局默认"]
+  D --> G["单次会话"]
+  E --> H["全局默认"]
+  E --> I["单次会话"]
+  G --> J["可临时加 --proxy"]
+  I --> J
+```
+
+`ccuse` 配置关系：
+
+```mermaid
+flowchart TD
+  A["ccuse init-glm / init-kimi / init-ark"] --> B["~/.claude/profiles/<name>.json"]
+  B --> C["ccuse edit <name>: 填 API key"]
+  C --> D{"怎么使用?"}
+  D -->|"ccuse global <name>"| E["备份 ~/.claude/settings.json"]
+  E --> F["复制 profile 到 ~/.claude/settings.json"]
+  F --> G["后续 claude 默认使用该 provider"]
+  D -->|"ccuse session <name>"| H["读取 profile.env"]
+  H --> I["只注入本次 claude 进程"]
+  I --> J["不修改 settings.json"]
+```
+
+`codexuse` 配置关系：
+
+```mermaid
+flowchart TD
+  A["codexuse global gpt-5.5 high"] --> B["更新 ~/.codex/config.toml 顶层模型字段"]
+  C["codexuse init deep gpt-5.5 xhigh medium"] --> D["~/.codex/deep.config.toml"]
+  D --> E{"怎么使用?"}
+  E -->|"codexuse use deep"| B
+  E -->|"codexuse run deep"| F["codex --profile deep"]
+  G["codexuse session gpt-5.5 xhigh medium"] --> H["本次 codex 进程"]
+  H --> I["不修改 config.toml"]
+  J["codexuse vpn on"] --> K["~/.codex/vpn.env"]
+  K --> F
+  K --> H
+```
+
 ## ccuse：Claude Code 切换
 
 `ccuse` 通过 profile 文件管理 Claude Code 配置。
