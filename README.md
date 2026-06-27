@@ -352,6 +352,7 @@ ccuse edit kimi
 ```bash
 bash -n bin/ccuse bin/codexuse scripts/install.sh tests/smoke.sh
 bash tests/smoke.sh
+scripts/export-readme-images.sh
 ```
 
 ## 资料
@@ -359,3 +360,4 @@ bash tests/smoke.sh
 - [Codex 模型切换调研](docs/codex-model-switching.md)
 - [ccuse 实现说明](docs/ccuse-notes.md)
 - [模型清单与示例](docs/models.md)
+- [生图与 README 配图工具调研](docs/image-tools.md)
