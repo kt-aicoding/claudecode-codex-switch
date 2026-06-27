@@ -15,7 +15,7 @@ Usage:
   ccuse claude          Switch to native Claude profile
   ccuse ark             Switch to Volcengine Ark Coding Plan profile
   ccuse volcengine      Alias for ark
-  ccuse glm             Switch to GLM (Zhipu AI) profile
+  ccuse glm             Switch to Z.AI GLM profile
   ccuse kimi            Switch to Kimi (Moonshot AI) profile
   ccuse init-claude     Save current settings.json as claude profile
   ccuse init-ark        Create or reconfigure a Volcengine Ark Coding Plan profile
@@ -37,7 +37,7 @@ Environment overrides:
 
 Examples:
   ccuse global glm       # Persistently switch Claude Code settings
-  ccuse session glm -- --model glm-5
+  ccuse session glm -- --model glm-5.2
                          # Run one Claude session with GLM env, no settings write
   ccuse session kimi --proxy http://127.0.0.1:7890
                          # Run one session through a VPN/proxy
@@ -379,12 +379,12 @@ init_glm() {
 {
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "YOUR_ZHIPU_API_KEY",
-    "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7-FlashX"
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.2",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7"
   }
 }
 JSON
@@ -395,16 +395,16 @@ JSON
   fi
   echo ""
   echo "=========================================="
-  echo "  Next Step: Set your Zhipu API Key"
+  echo "  Next Step: Set your Z.AI / Zhipu API Key"
   echo "=========================================="
   echo ""
-  echo "1. Get your API key from: https://open.bigmodel.cn/iframe/login"
+  echo "1. Get your API key from the Z.AI Coding Plan console."
   echo "2. Replace YOUR_ZHIPU_API_KEY in the profile file"
   echo ""
   echo "Available models:"
-  echo "  - GLM-5            (Latest flagship, coding aligned with Claude Opus 4.5)"
-  echo "  - GLM-4.7          (High intelligence, better coding & aesthetics)"
-  echo "  - GLM-4.7-FlashX   (Lightweight, fast, cost-effective)"
+  echo "  - glm-5.2       (latest strongest coding model, higher quota impact)"
+  echo "  - glm-5-turbo   (advanced coding model)"
+  echo "  - glm-4.7       (routine coding, lower quota impact)"
   echo ""
   echo "3. Then run: ccuse glm"
   echo ""
@@ -439,9 +439,9 @@ init_kimi() {
     "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding/",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "kimi-k2.5",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2.5",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "kimi-k2.5"
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "kimi-for-coding",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-for-coding",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "kimi-for-coding"
   }
 }
 JSON
@@ -458,7 +458,8 @@ JSON
   echo "1. Get your API key from: https://platform.moonshot.cn/console/api-keys"
   echo "2. Replace YOUR_KIMI_API_KEY in the profile file"
   echo ""
-  echo "Default model: kimi-k2.5 (Latest, most intelligent, 256k context)"
+  echo "Default coding model id: kimi-for-coding"
+  echo "Kimi Code maps this stable id to the latest backend coding model."
   echo ""
   echo "3. Then run: ccuse kimi"
   echo ""
@@ -616,24 +617,32 @@ Claude Code native aliases/examples:
   opus                    Claude Code alias for latest Opus-class model
   sonnet                  Claude Code alias for latest Sonnet-class model
   fable                   Claude Code alias for latest Fable-class model
-  claude-opus-4-6         Example full model id
-  claude-sonnet-4-6       Example full model id
+  claude-opus-4-8         Latest Claude API Opus model id
+  claude-sonnet-4-6       Claude API Sonnet model id
+  claude-haiku-4-5        Claude API Haiku model id
   claude-fable-5          Example full model id shown by Claude Code help
 
 Volcengine Ark Coding Plan:
+  ark-code-latest
+  doubao-seed-2-0-pro-260215
   doubao-seed-2-0-code-preview-260215
+  doubao-seed-2-0-mini-260215
+  doubao-seed-2-0-lite-260215
 
-Zhipu GLM Anthropic-compatible examples:
-  glm-5
+Z.AI GLM Anthropic-compatible examples:
+  glm-5.2
+  glm-5.2[1m]             1M context variant; use CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000
+  glm-5-turbo
   glm-4.7
-  glm-4.7-FlashX
 
-Moonshot Kimi Coding examples:
-  kimi-k2.5
+Moonshot Kimi Code examples:
+  kimi-for-coding          Stable Kimi Code model id; backend tracks latest coding model
+  K2.7 Code                Thinking mode backend, triggered through kimi-for-coding
+  K2.6                     Non-thinking backend, routed through kimi-for-coding
 
 Usage:
   Global provider/profile: ccuse global glm
-  Session provider/profile: ccuse session glm -- --model glm-5
+  Session provider/profile: ccuse session glm -- --model glm-5.2
   Native Claude session model: claude --model sonnet
 
 Notes:

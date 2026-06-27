@@ -49,7 +49,7 @@ ccuse global glm
 运行：
 
 ```bash
-ccuse session glm -- --model glm-5
+ccuse session glm -- --model glm-5.2
 ```
 
 执行流程：
@@ -65,7 +65,7 @@ ccuse session glm -- --model glm-5
 
 ```bash
 ccuse session kimi
-ccuse session glm -- --model glm-5 -p "hello"
+ccuse session glm -- --model glm-5.2 -p "hello"
 ccuse session ark --proxy http://127.0.0.1:7890
 ```
 
@@ -108,8 +108,8 @@ no_proxy
 | --- | --- | --- |
 | `ccuse init-claude` | `claude.json` | 保存当前原生 Claude 配置 |
 | `ccuse init-ark` | `ark.json` | Volcengine Ark Coding Plan |
-| `ccuse init-glm` | `glm.json` | Zhipu GLM Anthropic 兼容接口 |
-| `ccuse init-kimi` | `kimi.json` | Moonshot Kimi Coding 兼容接口 |
+| `ccuse init-glm` | `glm.json` | Z.AI GLM Coding Plan / Anthropic 兼容接口 |
+| `ccuse init-kimi` | `kimi.json` | Moonshot Kimi Code / Anthropic 兼容接口 |
 
 模板里只写占位 API key。用户需要在本机替换：
 

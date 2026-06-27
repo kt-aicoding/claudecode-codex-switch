@@ -73,17 +73,17 @@ cat > "$PROFILE_DIR/glm.json" <<'JSON'
 {
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "test-token",
-    "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5"
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.2"
   }
 }
 JSON
 
 "$ROOT/bin/ccuse" vpn glm on http://127.0.0.1:7890 "localhost,127.0.0.1" >/tmp/ccuse-smoke.out
 grep -q 'HTTP_PROXY' "$PROFILE_DIR/glm.json"
-PATH="$TMP/bin:$PATH" "$ROOT/bin/ccuse" session glm -- --model glm-5 -p hello >/tmp/ccuse-smoke.out
-grep -Fq 'claude args: [--model] [glm-5] [-p] [hello]' "$CAPTURE_FILE"
-grep -q 'ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic' "$CAPTURE_FILE"
+PATH="$TMP/bin:$PATH" "$ROOT/bin/ccuse" session glm -- --model glm-5.2 -p hello >/tmp/ccuse-smoke.out
+grep -Fq 'claude args: [--model] [glm-5.2] [-p] [hello]' "$CAPTURE_FILE"
+grep -q 'ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic' "$CAPTURE_FILE"
 grep -q 'HTTP_PROXY=http://127.0.0.1:7890' "$CAPTURE_FILE"
 test ! -f "$SETTINGS_FILE"
 

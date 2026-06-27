@@ -1,6 +1,6 @@
 # claudecode-codex-switch
 
-Claude Code 和 Codex CLI 的模型 / provider 切换工具。
+Claude Code 和 Codex CLI 的模型 / provider 切换工具。支持全局切换、单次会话切换、VPN/proxy 参数和常用模型清单。
 
 这个仓库把两个场景放在一起：
 
@@ -17,6 +17,27 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/kt-aicoding/claudecode-c
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+## 最常用
+
+Claude Code：
+
+```bash
+ccuse init-glm
+ccuse global glm
+ccuse session glm -- --model glm-5.2
+ccuse session kimi --proxy http://127.0.0.1:7890
+ccuse models
+```
+
+Codex：
+
+```bash
+codexuse global gpt-5.5 high
+codexuse session gpt-5.5 xhigh medium -- --search
+codexuse vpn on http://127.0.0.1:7890 "localhost,127.0.0.1"
+codexuse models
 ```
 
 ## ccuse：Claude Code 切换
@@ -42,7 +63,7 @@ ccuse kimi
 ccuse claude
 
 ccuse global glm
-ccuse session glm -- --model glm-5
+ccuse session glm -- --model glm-5.2
 ccuse session kimi --proxy http://127.0.0.1:7890
 ccuse vpn ark on http://127.0.0.1:7890 "localhost,127.0.0.1"
 
@@ -58,8 +79,8 @@ ccuse edit glm
 | --- | --- | --- |
 | `ccuse claude` | Anthropic | 使用原生 Claude 配置 |
 | `ccuse ark` | Volcengine Ark | Ark Coding Plan Claude 兼容接口 |
-| `ccuse glm` | Zhipu GLM | GLM Anthropic 兼容接口 |
-| `ccuse kimi` | Moonshot Kimi | Kimi Coding Anthropic 兼容接口 |
+| `ccuse glm` | Z.AI GLM | GLM Coding Plan / Anthropic 兼容接口 |
+| `ccuse kimi` | Moonshot Kimi | Kimi Code Anthropic 兼容接口，默认 `kimi-for-coding` |
 
 `ccuse` profile 中可能包含 API key，占位模板会写 `YOUR_*_API_KEY`，真实 key 只保存在用户本机，不提交到仓库。
 
@@ -75,7 +96,7 @@ ccuse global claude
 会话级切换不会改 `settings.json`，适合临时试模型或临时走 VPN：
 
 ```bash
-ccuse session glm -- --model glm-5
+ccuse session glm -- --model glm-5.2
 ccuse session ark --proxy http://127.0.0.1:7890
 ```
 
@@ -163,6 +184,20 @@ codexuse edit config
 codexuse edit fast
 codexuse remove fast
 ```
+
+## 当前模型速查
+
+更新日期：2026-06-27。模型 ID 会变，自动化前以 provider 控制台和官方文档为准。
+
+| Provider | 推荐 / 常用模型 |
+| --- | --- |
+| Claude Code native | `opus`、`sonnet`、`fable`；Claude API 示例：`claude-opus-4-8`、`claude-sonnet-4-6`、`claude-haiku-4-5` |
+| Volcengine Ark Coding Plan | `ark-code-latest`、`doubao-seed-2-0-pro-260215`、`doubao-seed-2-0-code-preview-260215`、`doubao-seed-2-0-mini-260215`、`doubao-seed-2-0-lite-260215` |
+| Z.AI GLM Coding Plan | `glm-5.2`、`glm-5.2[1m]`、`glm-5-turbo`、`glm-4.7` |
+| Moonshot Kimi Code | `kimi-for-coding`；Thinking 模式会调用最新 K2.7 Code，否则走 K2.6 |
+| Codex / OpenAI | `gpt-5.5`，`o3` 仍是 Codex config override 示例中的模型 ID |
+
+完整说明见 [docs/models.md](docs/models.md)。
 
 ## 两者差异
 

@@ -507,9 +507,8 @@ vpn_command() {
 list_models() {
   cat <<'MODELS'
 Common Codex/OpenAI model examples:
-  gpt-5.5                 Recommended current Codex default in OpenAI docs
-  gpt-5.4                 Older/default-compatible GPT-5 family model
-  o3                      Example model id accepted by Codex config examples
+  gpt-5.5                 Codex config docs default example and this tool's preset default
+  o3                      Example model id accepted by Codex -c model="o3" config override
 
 Common profile presets:
   fast: gpt-5.5 medium low

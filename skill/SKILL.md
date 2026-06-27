@@ -34,7 +34,7 @@ ccuse kimi
 ccuse claude
 
 ccuse global glm
-ccuse session glm -- --model glm-5
+ccuse session glm -- --model glm-5.2
 ccuse session ark --proxy http://127.0.0.1:7890
 ccuse vpn glm on http://127.0.0.1:7890 "localhost,127.0.0.1"
 ccuse models
